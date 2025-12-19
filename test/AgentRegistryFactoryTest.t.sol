@@ -4,6 +4,7 @@ pragma solidity ^0.8.25;
 import "forge-std/Test.sol";
 import "../src/AgentRegistry.sol";
 import "../src/AgentRegistryFactory.sol";
+import "../src/AgentRegistrar.sol";
 import "../src/interfaces/IAgentRegistry.sol";
 import {IERC8048} from "../src/interfaces/IERC8048.sol";
 import {IERC8049} from "../src/interfaces/IERC8049.sol";
@@ -20,6 +21,7 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
  * - Clone initialization and functionality
  * - Multiple registry deployment tracking
  * - Full registry functionality through clones
+ * - Combined registry + registrar deployment
  */
 contract AgentRegistryFactoryTest is Test {
     
@@ -39,6 +41,8 @@ contract AgentRegistryFactoryTest is Test {
     /* --- Events --- */
     
     event RegistryDeployed(address indexed registry, address indexed admin, bytes32 salt);
+    event RegistrarDeployed(address indexed registrar, address indexed registry, address indexed owner);
+    event RegistryAndRegistrarDeployed(address indexed registry, address indexed registrar, address indexed admin);
     
     /* --- Setup --- */
     
@@ -51,13 +55,17 @@ contract AgentRegistryFactoryTest is Test {
     /* ============================================================== */
     
     function test_001____factoryDeployment____ImplementationIsDeployed() public view {
-        address impl = factory.implementation();
-        assertNotEq(impl, address(0), "Implementation should be deployed");
-        assertTrue(impl.code.length > 0, "Implementation should have code");
+        address impl = factory.registryImplementation();
+        assertNotEq(impl, address(0), "Registry implementation should be deployed");
+        assertTrue(impl.code.length > 0, "Registry implementation should have code");
+        
+        address registrarImpl = factory.registrarImplementation();
+        assertNotEq(registrarImpl, address(0), "Registrar implementation should be deployed");
+        assertTrue(registrarImpl.code.length > 0, "Registrar implementation should have code");
     }
     
     function test_002____factoryDeployment____ImplementationIsAgentRegistry() public view {
-        address impl = factory.implementation();
+        address impl = factory.registryImplementation();
         
         // Verify it supports the expected interfaces
         assertTrue(
@@ -76,6 +84,7 @@ contract AgentRegistryFactoryTest is Test {
     
     function test_003____factoryDeployment____InitialDeployedCountIsZero() public view {
         assertEq(factory.getDeployedRegistriesCount(), 0, "Should have no deployed registries initially");
+        assertEq(factory.getDeployedRegistrarsCount(), 0, "Should have no deployed registrars initially");
     }
     
     /* ============================================================== */
@@ -126,8 +135,6 @@ contract AgentRegistryFactoryTest is Test {
         // Find the RegistryDeployed event
         bool eventFound = false;
         for (uint256 i = 0; i < entries.length; i++) {
-            // RegistryDeployed(address indexed registry, address indexed admin, bytes32 salt)
-            // keccak256("RegistryDeployed(address,address,bytes32)")
             if (entries[i].topics[0] == keccak256("RegistryDeployed(address,address,bytes32)")) {
                 assertEq(address(uint160(uint256(entries[i].topics[1]))), registry, "Registry address mismatch");
                 assertEq(address(uint160(uint256(entries[i].topics[2]))), ADMIN1, "Admin address mismatch");
@@ -158,7 +165,7 @@ contract AgentRegistryFactoryTest is Test {
     
     function test_020____deployDeterministic____DeploysWithSalt() public {
         bytes32 salt = keccak256("test-salt");
-        address registry = factory.deployDeterministic(ADMIN1, salt);
+        address registry = factory.deployRegistryDeterministic(ADMIN1, salt);
         
         assertNotEq(registry, address(0), "Registry should be deployed");
         assertTrue(registry.code.length > 0, "Registry should have code");
@@ -167,8 +174,8 @@ contract AgentRegistryFactoryTest is Test {
     function test_021____deployDeterministic____AddressMatchesPrediction() public {
         bytes32 salt = keccak256("deterministic-test");
         
-        address predicted = factory.predictDeterministicAddress(salt);
-        address deployed = factory.deployDeterministic(ADMIN1, salt);
+        address predicted = factory.predictRegistryAddress(salt);
+        address deployed = factory.deployRegistryDeterministic(ADMIN1, salt);
         
         assertEq(deployed, predicted, "Deployed address should match prediction");
     }
@@ -177,20 +184,20 @@ contract AgentRegistryFactoryTest is Test {
         bytes32 salt = keccak256("same-salt");
         
         // Predict address before deployment
-        address predicted = factory.predictDeterministicAddress(salt);
+        address predicted = factory.predictRegistryAddress(salt);
         
         // Deploy with the salt
-        address deployed = factory.deployDeterministic(ADMIN1, salt);
+        address deployed = factory.deployRegistryDeterministic(ADMIN1, salt);
         
         assertEq(deployed, predicted, "Address should be deterministic");
     }
     
-    function test_023____deployDeterministic____DifferentSaltsDifferentAddresses() public {
+    function test_023____deployDeterministic____DifferentSaltsDifferentAddresses() public view {
         bytes32 salt1 = keccak256("salt-one");
         bytes32 salt2 = keccak256("salt-two");
         
-        address predicted1 = factory.predictDeterministicAddress(salt1);
-        address predicted2 = factory.predictDeterministicAddress(salt2);
+        address predicted1 = factory.predictRegistryAddress(salt1);
+        address predicted2 = factory.predictRegistryAddress(salt2);
         
         assertNotEq(predicted1, predicted2, "Different salts should predict different addresses");
     }
@@ -198,15 +205,15 @@ contract AgentRegistryFactoryTest is Test {
     function test_024____deployDeterministic____RevertsOnDuplicateSalt() public {
         bytes32 salt = keccak256("duplicate-salt");
         
-        factory.deployDeterministic(ADMIN1, salt);
+        factory.deployRegistryDeterministic(ADMIN1, salt);
         
         vm.expectRevert(); // Should revert when deploying with same salt
-        factory.deployDeterministic(ADMIN2, salt);
+        factory.deployRegistryDeterministic(ADMIN2, salt);
     }
     
     function test_025____deployDeterministic____TracksRegistry() public {
         bytes32 salt = keccak256("tracked-salt");
-        address registry = factory.deployDeterministic(ADMIN1, salt);
+        address registry = factory.deployRegistryDeterministic(ADMIN1, salt);
         
         assertEq(factory.getDeployedRegistriesCount(), 1, "Should have 1 deployed registry");
         assertTrue(factory.isDeployedRegistry(registry), "Should be marked as deployed");
@@ -218,7 +225,7 @@ contract AgentRegistryFactoryTest is Test {
     
     function test_030____predictAddress____ReturnsValidAddress() public view {
         bytes32 salt = keccak256("prediction-test");
-        address predicted = factory.predictDeterministicAddress(salt);
+        address predicted = factory.predictRegistryAddress(salt);
         
         assertNotEq(predicted, address(0), "Predicted address should not be zero");
     }
@@ -226,8 +233,8 @@ contract AgentRegistryFactoryTest is Test {
     function test_031____predictAddress____ConsistentPredictions() public view {
         bytes32 salt = keccak256("consistent-salt");
         
-        address predicted1 = factory.predictDeterministicAddress(salt);
-        address predicted2 = factory.predictDeterministicAddress(salt);
+        address predicted1 = factory.predictRegistryAddress(salt);
+        address predicted2 = factory.predictRegistryAddress(salt);
         
         assertEq(predicted1, predicted2, "Same salt should give same prediction");
     }
@@ -237,10 +244,10 @@ contract AgentRegistryFactoryTest is Test {
     /* ============================================================== */
     
     function test_040____getDeployedRegistries____ReturnsCorrectRange() public {
-        address registry1 = factory.deploy(ADMIN1);
+        factory.deploy(ADMIN1);
         address registry2 = factory.deploy(ADMIN2);
         address registry3 = factory.deploy(ADMIN1);
-        address registry4 = factory.deploy(ADMIN2);
+        factory.deploy(ADMIN2);
         
         address[] memory range = factory.getDeployedRegistries(1, 3);
         
@@ -437,11 +444,151 @@ contract AgentRegistryFactoryTest is Test {
     }
     
     function test_071____initSecurity____CannotInitializeImplementation() public {
-        address impl = factory.implementation();
+        address impl = factory.registryImplementation();
         AgentRegistry implContract = AgentRegistry(impl);
         
         vm.expectRevert();
         implContract.initialize(ADMIN1);
+    }
+    
+    /* ============================================================== */
+    /*                  COMBINED DEPLOYMENT (REGISTRY + REGISTRAR)    */
+    /* ============================================================== */
+    
+    function test_080____combinedDeploy____DeploysBothContracts() public {
+        (address registry, address registrar) = factory.deploy(ADMIN1, 0.01 ether, 1000);
+        
+        assertNotEq(registry, address(0), "Registry should be deployed");
+        assertNotEq(registrar, address(0), "Registrar should be deployed");
+        assertTrue(registry.code.length > 0, "Registry should have code");
+        assertTrue(registrar.code.length > 0, "Registrar should have code");
+    }
+    
+    function test_081____combinedDeploy____RegistrarLinkedToRegistry() public {
+        (address registry, address registrar) = factory.deploy(ADMIN1, 0.01 ether, 1000);
+        
+        AgentRegistrar reg = AgentRegistrar(payable(registrar));
+        assertEq(address(reg.registry()), registry, "Registrar should point to registry");
+    }
+    
+    function test_082____combinedDeploy____RegistrarHasCorrectConfig() public {
+        uint256 mintPrice = 0.05 ether;
+        uint256 maxSupply = 500;
+        
+        (, address registrar) = factory.deploy(ADMIN1, mintPrice, maxSupply);
+        
+        AgentRegistrar reg = AgentRegistrar(payable(registrar));
+        assertEq(reg.mintPrice(), mintPrice, "Mint price should be set");
+        assertEq(reg.maxSupply(), maxSupply, "Max supply should be set");
+        assertEq(reg.owner(), ADMIN1, "Owner should be admin");
+        assertFalse(reg.open(), "Minting should be closed initially");
+    }
+    
+    function test_083____combinedDeploy____RegistrarHasRegistrarRole() public {
+        (address registry, address registrar) = factory.deploy(ADMIN1, 0.01 ether, 1000);
+        
+        AgentRegistry reg = AgentRegistry(registry);
+        assertTrue(
+            reg.hasRole(reg.REGISTRAR_ROLE(), registrar),
+            "Registrar should have REGISTRAR_ROLE"
+        );
+    }
+    
+    function test_084____combinedDeploy____TracksBothContracts() public {
+        (address registry, address registrar) = factory.deploy(ADMIN1, 0.01 ether, 1000);
+        
+        assertEq(factory.getDeployedRegistriesCount(), 1, "Should have 1 registry");
+        assertEq(factory.getDeployedRegistrarsCount(), 1, "Should have 1 registrar");
+        assertTrue(factory.isDeployedRegistry(registry), "Registry should be tracked");
+        assertTrue(factory.isDeployedRegistrar(registrar), "Registrar should be tracked");
+        assertEq(factory.registryToRegistrar(registry), registrar, "Mapping should be set");
+    }
+    
+    function test_085____combinedDeploy____CanMintThroughRegistrar() public {
+        (address registry, address registrar) = factory.deploy(ADMIN1, 0.01 ether, 1000);
+        
+        AgentRegistrar reg = AgentRegistrar(payable(registrar));
+        AgentRegistry agentReg = AgentRegistry(registry);
+        
+        // Open minting
+        vm.prank(ADMIN1);
+        reg.openMinting();
+        
+        // Mint an agent
+        vm.deal(OWNER1, 1 ether);
+        vm.prank(OWNER1);
+        uint256 agentId = reg.mint{value: 0.01 ether}();
+        
+        assertEq(agentId, 0, "First agent ID should be 0");
+        assertEq(agentReg.ownerOf(0), OWNER1, "Owner should be OWNER1");
+        assertEq(reg.totalMinted(), 1, "Total minted should be 1");
+    }
+    
+    function test_086____combinedDeploy____EmitsAllEvents() public {
+        vm.recordLogs();
+        
+        (address registry, address registrar) = factory.deploy(ADMIN1, 0.01 ether, 1000);
+        
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        
+        bool registryEventFound = false;
+        bool registrarEventFound = false;
+        bool combinedEventFound = false;
+        
+        for (uint256 i = 0; i < entries.length; i++) {
+            if (entries[i].topics[0] == keccak256("RegistryDeployed(address,address,bytes32)")) {
+                registryEventFound = true;
+            }
+            if (entries[i].topics[0] == keccak256("RegistrarDeployed(address,address,address)")) {
+                registrarEventFound = true;
+            }
+            if (entries[i].topics[0] == keccak256("RegistryAndRegistrarDeployed(address,address,address)")) {
+                combinedEventFound = true;
+            }
+        }
+        
+        assertTrue(registryEventFound, "RegistryDeployed should be emitted");
+        assertTrue(registrarEventFound, "RegistrarDeployed should be emitted");
+        assertTrue(combinedEventFound, "RegistryAndRegistrarDeployed should be emitted");
+        
+        // Suppress unused variable warnings
+        registry;
+        registrar;
+    }
+    
+    /* ============================================================== */
+    /*                  REGISTRAR-ONLY DEPLOYMENT                     */
+    /* ============================================================== */
+    
+    function test_090____deployRegistrar____DeploysForExistingRegistry() public {
+        address registry = factory.deploy(ADMIN1);
+        
+        address registrar = factory.deployRegistrar(
+            AgentRegistry(registry),
+            0.01 ether,
+            1000,
+            ADMIN2
+        );
+        
+        assertNotEq(registrar, address(0), "Registrar should be deployed");
+        
+        AgentRegistrar reg = AgentRegistrar(payable(registrar));
+        assertEq(address(reg.registry()), registry, "Should point to registry");
+        assertEq(reg.owner(), ADMIN2, "Owner should be ADMIN2");
+    }
+    
+    function test_091____deployRegistrar____TracksRegistrar() public {
+        address registry = factory.deploy(ADMIN1);
+        
+        address registrar = factory.deployRegistrar(
+            AgentRegistry(registry),
+            0.01 ether,
+            1000,
+            ADMIN1
+        );
+        
+        assertEq(factory.getDeployedRegistrarsCount(), 1, "Should have 1 registrar");
+        assertTrue(factory.isDeployedRegistrar(registrar), "Should be tracked");
     }
     
     /* ============================================================== */
@@ -458,8 +605,8 @@ contract AgentRegistryFactoryTest is Test {
     }
     
     function testFuzz_deterministicAddress(bytes32 salt) public {
-        address predicted = factory.predictDeterministicAddress(salt);
-        address deployed = factory.deployDeterministic(ADMIN1, salt);
+        address predicted = factory.predictRegistryAddress(salt);
+        address deployed = factory.deployRegistryDeterministic(ADMIN1, salt);
         
         assertEq(deployed, predicted, "Deployed should match predicted");
     }
@@ -473,5 +620,16 @@ contract AgentRegistryFactoryTest is Test {
         
         assertEq(factory.getDeployedRegistriesCount(), count, "Count should match");
     }
+    
+    function testFuzz_combinedDeploy(uint256 mintPrice, uint256 maxSupply) public {
+        vm.assume(mintPrice <= 100 ether);
+        vm.assume(maxSupply <= 1_000_000);
+        
+        (address registry, address registrar) = factory.deploy(ADMIN1, mintPrice, maxSupply);
+        
+        AgentRegistrar reg = AgentRegistrar(payable(registrar));
+        assertEq(reg.mintPrice(), mintPrice, "Mint price should match");
+        assertEq(reg.maxSupply(), maxSupply, "Max supply should match");
+        assertEq(address(reg.registry()), registry, "Registry should match");
+    }
 }
-
