@@ -1,34 +1,126 @@
 # Minimal Agent Registry
 
-A lightweight onchain registry for **discovering AI agents across organizational boundaries** using [ERC-6909](https://eips.ethereum.org/EIPS/eip-6909) as the underlying token standard and [ERC-8048](https://eips.ethereum.org/EIPS/eip-8048) for onchain metadata.
+A complete, production-ready system for building **decentralized AI agent networks** on Ethereum. Deploy your own agent registry with customizable minting, fees, supply limits, and onchain metadata—all with 95% gas savings through EIP-1167 minimal clones.
 
-Each agent is represented as a token ID with a single owner and fully onchain metadata, enabling agent discovery and ownership transfer without reliance on external storage.
+## Overview
 
-## Motivation
+The Agent Registry system enables organizations, DAOs, and individuals to create and manage collections of AI agents onchain. Each agent is represented as a token with:
 
-While various offchain agent communication protocols handle capabilities advertisement and task orchestration, they don't inherently cover agent discovery. To foster an open, cross-organizational agent economy, we need a mechanism for discovering agents in a decentralized manner.
+- **Single ownership** via [ERC-6909](https://eips.ethereum.org/EIPS/eip-6909)
+- **Fully onchain metadata** via [ERC-8048](https://eips.ethereum.org/EIPS/eip-8048)
+- **Transferable ownership** with standard token semantics
+- **Discoverable endpoints** for agent communication protocols (MCP, A2A, etc.)
 
-This registry enables:
-- **Decentralized Discovery**: Anyone can deploy their own registry on any L2 or Mainnet Ethereum
-- **Specialized Collections**: Create registries for specific agent categories (e.g., Whitehat Hacking Agents, DeFi Stablecoin Strategy Agents)
-- **Censorship Resistance**: All metadata stored fully onchain using ERC-8048
-- **Single Ownership**: Each agent has exactly one owner with clear transfer semantics
+## Why Use This?
 
-## Features
+While offchain agent protocols handle capabilities advertisement and task orchestration, they don't inherently cover **agent discovery**. This registry provides:
 
-- **ERC-6909 Multi-Token**: Efficient token standard with single ownership model
-- **ERC-8048 Onchain Metadata**: Key-value metadata stored entirely onchain
-- **ERC-8049 Contract Metadata**: Registry-level metadata for collection info
-- **Access Control**: OpenZeppelin AccessControl for contract-level permissions
-- **Token Authorization**: ERC-6909-style approvals for agent-level permissions
+| Feature | Description |
+|---------|-------------|
+| **Decentralized Discovery** | Deploy registries on any EVM chain |
+| **Specialized Collections** | Create themed registries (e.g., "DeFi Strategy Agents", "Security Auditing Agents") |
+| **Censorship Resistance** | All metadata stored fully onchain |
+| **Economic Models** | Configurable mint fees, supply caps, and revenue collection |
+| **Gas Efficiency** | 95% cheaper deployments via minimal clones |
 
-## Agent ID Format
+## Architecture
 
-Each agent is uniquely identified by:
-- **Registry Address**: The contract address of the registry
-- **agentId**: The token ID (`uint256`) assigned incrementally by the registry
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                     AgentRegistryFactory                           │
+│  ┌─────────────────────────┐    ┌─────────────────────────┐        │ 
+│  │  Registry Imp.          │    │ Registrar Imp.          │        │ 
+│  │      (ERC-6909 +        │    │   (Minting + Fees +     │        │
+│  │   ERC-8048 + Roles)     │    │   Supply Control)       │        │
+│  └─────────────────────────┘    └─────────────────────────┘        │
+└────────────────────────────────────────────────────────────────────┘
+                    │                           │
+                    │ clone()                   │ clone()
+                    ▼                           ▼
+        ┌───────────────────┐       ┌───────────────────┐
+        │  Your Registry    │◄──────│  Your Registrar   │
+        │   (Minimal Clone) │       │   (Minimal Clone) │
+        │                   │       │                   │
+        │  • Agent tokens   │       │  • Public minting │
+        │  • Metadata       │       │  • Fee collection │
+        │  • Access control │       │  • Supply limits  │
+        └───────────────────┘       └───────────────────┘
+```
 
-Example: Registry `0xd8da6bf26964af9d7eed9e03e53415d37aa96045`, Agent ID `12345`
+## System Components
+
+### 1. AgentRegistry
+
+The core contract that stores agents and their metadata.
+
+**Features:**
+- ERC-6909 token standard with single ownership (balance is always 0 or 1)
+- ERC-8048 onchain key-value metadata per agent
+- ERC-8049 contract-level metadata for the registry itself
+- OpenZeppelin AccessControl for role-based permissions
+- ERC-6909 approvals and operators for token-level permissions
+
+**Roles:**
+| Role | Description |
+|------|-------------|
+| `DEFAULT_ADMIN_ROLE` | Can grant/revoke all roles |
+| `REGISTRAR_ROLE` | Can register (mint) new agents |
+| `METADATA_ADMIN_ROLE` | Can set contract-level metadata |
+
+### 2. AgentRegistrar
+
+An optional companion contract for public minting with economic controls.
+
+**Features:**
+| Feature | Description |
+|---------|-------------|
+| **Mint Price** | Configurable ETH price per mint (0 = free) |
+| **Max Supply** | Optional cap on total agents (0 = unlimited) |
+| **Open/Close** | Owner can open/close public minting |
+| **Lock Bits** | Permanently lock specific settings |
+| **Metadata Minting** | Set agent metadata during mint |
+| **Batch Minting** | Mint multiple agents in one transaction |
+| **Revenue Collection** | Owner can withdraw collected ETH |
+| **Overpayment Refunds** | Automatically refunds excess ETH |
+
+**Lock Bits (Irreversible):**
+| Lock | Effect |
+|------|--------|
+| `LOCK_OPEN_CLOSE` | Permanently freezes open/close state |
+| `LOCK_MINT_PRICE` | Permanently freezes mint price |
+| `LOCK_MAX_SUPPLY` | Permanently freezes max supply |
+
+### 3. AgentRegistryFactory
+
+A gas-efficient factory for deploying registries and registrars using EIP-1167 minimal clones.
+
+**Key Features:**
+- Deploy registry + registrar together or separately
+- Deterministic deployment with predictable addresses
+- Automatic role setup when deploying pairs
+- Tracks all deployed contracts with enumeration functions
+
+See [`deployments/Sepolia_factory_deployment_2025-12-19-10.md`](deployments/Sepolia_factory_deployment_2025-12-19-10.md) for full API documentation.
+
+## Deployed Contracts (Sepolia)
+
+| Contract | Address |
+|----------|---------|
+| **Factory** | [`0x97B5679fA5B7fB4B38525359791BB94Eac0a3723`](https://sepolia.etherscan.io/address/0x97B5679fA5B7fB4B38525359791BB94Eac0a3723) |
+| **Registry Implementation** | [`0xE625179F5CD970fD3FB00Df72398815106DB5F31`](https://sepolia.etherscan.io/address/0xE625179F5CD970fD3FB00Df72398815106DB5F31) |
+| **Registrar Implementation** | [`0x6aB5c9e29C261c8c9019CF85B5D8057b9f0A9cEd`](https://sepolia.etherscan.io/address/0x6aB5c9e29C261c8c9019CF85B5D8057b9f0A9cEd) |
+
+📄 **Full deployment details and code examples:** [`deployments/Sepolia_factory_deployment_2025-12-19-10.md`](deployments/Sepolia_factory_deployment_2025-12-19-10.md)
+
+## Gas Savings
+
+Using EIP-1167 minimal clones provides massive gas savings:
+
+| Deployment Type | Gas Cost | Savings |
+|-----------------|----------|---------|
+| Standalone Registry | ~4,463,047 | - |
+| Clone Registry | ~219,172 | **95%** |
+| Clone Registry + Registrar | ~400,000 | **91%** |
 
 ## Standard Metadata Keys
 
@@ -36,109 +128,69 @@ Example: Registry `0xd8da6bf26964af9d7eed9e03e53415d37aa96045`, Agent ID `12345`
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `name` | string | Human-readable name of the agent |
-| `ens_name` | string | ENS name associated with the agent |
-| `image` | string | URI pointing to an image (may be data URL) |
-| `description` | string | Natural language description of capabilities |
-| `endpoint_type` | string | Protocol type (e.g., "mcp", "a2a") |
-| `endpoint` | string | Primary offchain endpoint URL |
-| `agent_account` | address | Agent's account address for transactions |
+| `name` | string | Human-readable name |
+| `ens_name` | string | ENS name for the agent |
+| `image` | string | Image URI (may be data URL) |
+| `description` | string | Capabilities description |
+| `endpoint_type` | string | Protocol type ("mcp", "a2a", etc.) |
+| `endpoint` | string | Primary endpoint URL |
+| `agent_account` | address | Agent's wallet address |
 
 ### Contract Metadata (ERC-8049)
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `name` | string | Human-readable name of the registry |
-| `description` | string | Description of the registry's purpose |
-| `image` | string | URI for registry image |
-| `symbol` | string | Short symbol for the registry |
+| `name` | string | Registry name |
+| `description` | string | Registry purpose |
+| `image` | string | Registry image URI |
+| `symbol` | string | Short symbol |
+
+## Use Cases
+
+| Use Case | Configuration |
+|----------|---------------|
+| **Free Community Registry** | `mintPrice: 0, maxSupply: 0` |
+| **Premium Agent Collection** | `mintPrice: 0.1 ETH, maxSupply: 100` + lock max supply |
+| **DAO-Controlled Registry** | Deploy with DAO multisig as admin |
+| **Permissioned Enterprise** | Deploy registry only, grant `REGISTRAR_ROLE` to approved addresses |
+| **Multiple Registrars** | Deploy registry, then multiple registrars with different economics |
 
 ## Installation
 
 ```bash
+git clone https://github.com/nxt3d/agent-registry
+cd agent-registry
 forge install
 ```
 
-## Build
+## Build & Test
 
 ```bash
 forge build
-```
-
-## Test
-
-```bash
 forge test
 ```
 
 ## Deployment
 
-### Basic Deployment
+### Using Existing Factory (Recommended)
 
 ```bash
-forge script script/DeployAgentRegistry.s.sol:DeployAgentRegistry \
-  --rpc-url $SEPOLIA_RPC_URL \
-  --broadcast \
-  --verify
+FACTORY_ADDRESS=0x97B5679fA5B7fB4B38525359791BB94Eac0a3723 \
+MINT_PRICE=10000000000000000 \
+MAX_SUPPLY=1000 \
+source .env && forge script script/DeployAgentRegistry.s.sol:DeployFromExistingFactory \
+  --rpc-url $SEPOLIA_RPC_URL --broadcast
 ```
 
-### With Additional Roles
+### Deploy New Factory + Registry
 
 ```bash
-REGISTRAR_ADDRESS=0x... METADATA_ADMIN_ADDRESS=0x... \
-forge script script/DeployAgentRegistry.s.sol:DeployAgentRegistryWithRoles \
-  --rpc-url $SEPOLIA_RPC_URL \
-  --broadcast \
-  --verify
+MINT_PRICE=10000000000000000 MAX_SUPPLY=1000 \
+source .env && forge script script/DeployAgentRegistry.s.sol:DeployRegistryAndRegistrar \
+  --rpc-url $SEPOLIA_RPC_URL --broadcast --verify
 ```
 
-## Roles
-
-| Role | Description |
-|------|-------------|
-| `DEFAULT_ADMIN_ROLE` | Can grant/revoke all roles |
-| `REGISTRAR_ROLE` | Can register new agents |
-| `METADATA_ADMIN_ROLE` | Can set contract-level metadata |
-
-## Usage
-
-### Register an Agent
-
-```solidity
-// Basic registration
-uint256 agentId = registry.register(
-    ownerAddress,
-    "mcp",                          // endpoint type
-    "https://agent.example.com",    // endpoint URL
-    agentAccountAddress             // agent's wallet
-);
-
-// With custom metadata
-IAgentRegistry.MetadataEntry[] memory metadata = new IAgentRegistry.MetadataEntry[](2);
-metadata[0] = IAgentRegistry.MetadataEntry("name", bytes("My Agent"));
-metadata[1] = IAgentRegistry.MetadataEntry("description", bytes("A helpful assistant"));
-uint256 agentId = registry.register(ownerAddress, metadata);
-```
-
-### Query Agent Metadata
-
-```solidity
-bytes memory name = registry.getMetadata(agentId, "name");
-bytes memory endpoint = registry.getMetadata(agentId, "endpoint");
-address owner = registry.ownerOf(agentId);
-```
-
-### Update Agent Metadata (Owner/Operator Only)
-
-```solidity
-registry.setMetadata(agentId, "endpoint", bytes("https://new-endpoint.com"));
-```
-
-### Transfer Ownership
-
-```solidity
-registry.transfer(newOwner, agentId, 1);
-```
+See [`script/DeployAgentRegistry.s.sol`](script/DeployAgentRegistry.s.sol) for all deployment options.
 
 ## Environment Variables
 
@@ -147,8 +199,16 @@ Create a `.env` file:
 ```bash
 DEPLOYER_PRIVATE_KEY=0x...
 SEPOLIA_RPC_URL=https://...
+MAINNET_RPC_URL=https://...
 ETHERSCAN_API_KEY=...
 ```
+
+## Security Considerations
+
+- **Lock Bits are Irreversible**: Once set, lock bits cannot be unset
+- **Role Management**: Be careful when granting `DEFAULT_ADMIN_ROLE`
+- **Registrar Ownership**: The registrar owner controls minting and withdrawals
+- **Factory is Permissionless**: Anyone can deploy registries from the factory
 
 ## License
 
