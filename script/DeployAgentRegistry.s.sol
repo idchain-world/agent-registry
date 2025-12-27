@@ -90,6 +90,7 @@ contract DeployAgentRegistryWithRoles is Script {
 /**
  * @title DeployAgentRegistryFactory
  * @dev Deployment script for AgentRegistryFactory contract (EIP-1167 minimal clones)
+ *      Deploys implementations separately to avoid initcode size limits
  * 
  * Usage:
  *   forge script script/DeployAgentRegistry.s.sol:DeployAgentRegistryFactory --rpc-url $SEPOLIA_RPC_URL --broadcast --verify
@@ -99,29 +100,49 @@ contract DeployAgentRegistryWithRoles is Script {
  *   - ETHERSCAN_API_KEY: API key for contract verification (optional)
  */
 contract DeployAgentRegistryFactory is Script {
-    function run() external returns (AgentRegistryFactory factory) {
+    function run() external returns (AgentRegistryFactory factory, address registryImpl, address registrarImpl) {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
 
-        console.log("Deploying AgentRegistryFactory...");
+        console.log("Deploying AgentRegistryFactory with separate implementations...");
         console.log("Deployer address:", deployer);
 
         vm.startBroadcast(deployerPrivateKey);
 
-        factory = new AgentRegistryFactory();
+        // Deploy implementations separately to avoid initcode size limits
+        console.log("Deploying AgentRegistry implementation...");
+        AgentRegistry registryImplContract = new AgentRegistry();
+        registryImpl = address(registryImplContract);
+        console.log("Registry Implementation deployed at:", registryImpl);
+
+        console.log("Deploying AgentRegistrar implementation...");
+        // Deploy registrar implementation with dummy values (will be overwritten on clone init)
+        AgentRegistrar registrarImplContract = new AgentRegistrar(
+            AgentRegistry(registryImpl),
+            0,
+            0,
+            deployer
+        );
+        registrarImpl = address(registrarImplContract);
+        console.log("Registrar Implementation deployed at:", registrarImpl);
+
+        console.log("Deploying AgentRegistryFactory...");
+        factory = new AgentRegistryFactory(registryImpl, registrarImpl);
 
         vm.stopBroadcast();
 
-        console.log("AgentRegistryFactory deployed at:", address(factory));
-        console.log("Registry Implementation:", factory.registryImplementation());
-        console.log("Registrar Implementation:", factory.registrarImplementation());
+        console.log("");
+        console.log("=== Deployment Summary ===");
+        console.log("AgentRegistryFactory:", address(factory));
+        console.log("Registry Implementation:", registryImpl);
+        console.log("Registrar Implementation:", registrarImpl);
         console.log("");
         console.log("To deploy registry + registrar:");
         console.log("  factory.deploy(admin, mintPrice, maxSupply)");
         console.log("To deploy registry only:");
         console.log("  factory.deployRegistry(admin)");
 
-        return factory;
+        return (factory, registryImpl, registrarImpl);
     }
 }
 
@@ -152,8 +173,17 @@ contract DeployRegistryAndRegistrar is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
+        // Deploy implementations separately to avoid initcode size limits
+        AgentRegistry registryImpl = new AgentRegistry();
+        AgentRegistrar registrarImpl = new AgentRegistrar(
+            registryImpl,
+            0,
+            0,
+            deployer
+        );
+
         // Deploy factory
-        factory = new AgentRegistryFactory();
+        factory = new AgentRegistryFactory(address(registryImpl), address(registrarImpl));
 
         // Deploy registry + registrar pair
         (registry, registrar) = factory.deploy(deployer, mintPrice, maxSupply);
@@ -199,8 +229,17 @@ contract DeployRegistryOnly is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
+        // Deploy implementations separately to avoid initcode size limits
+        AgentRegistry registryImpl = new AgentRegistry();
+        AgentRegistrar registrarImpl = new AgentRegistrar(
+            registryImpl,
+            0,
+            0,
+            deployer
+        );
+
         // Deploy factory
-        factory = new AgentRegistryFactory();
+        factory = new AgentRegistryFactory(address(registryImpl), address(registrarImpl));
 
         // Deploy registry only
         registry = factory.deploy(deployer);

@@ -22,13 +22,13 @@ contract AgentRegistryFactory {
     /// @notice Emitted when a new AgentRegistrar clone is deployed
     /// @param registrar The address of the newly deployed registrar clone
     /// @param registry The registry the registrar mints to
-    /// @param owner The owner of the registrar
-    event RegistrarDeployed(address indexed registrar, address indexed registry, address indexed owner);
+    /// @param admin The admin of the registrar (receives ADMIN_ROLE, DEFAULT_ADMIN_ROLE, and MINTER_ROLE)
+    event RegistrarDeployed(address indexed registrar, address indexed registry, address indexed admin);
 
     /// @notice Emitted when both registry and registrar are deployed together
     /// @param registry The address of the registry
     /// @param registrar The address of the registrar
-    /// @param admin The admin/owner address
+    /// @param admin The admin address (receives all roles in both contracts)
     event RegistryAndRegistrarDeployed(address indexed registry, address indexed registrar, address indexed admin);
 
     /* --- State Variables --- */
@@ -56,17 +56,15 @@ contract AgentRegistryFactory {
 
     /* --- Constructor --- */
 
-    /// @notice Deploy the factory with new implementation contracts
-    /// @dev Creates AgentRegistry and AgentRegistrar implementations for cloning
-    constructor() {
-        registryImplementation = address(new AgentRegistry());
-        // Deploy registrar implementation with dummy values (will be overwritten on clone init)
-        registrarImplementation = address(new AgentRegistrar(
-            AgentRegistry(registryImplementation),
-            0,
-            0,
-            address(this)
-        ));
+    /// @notice Deploy the factory with pre-deployed implementation contracts
+    /// @param _registryImplementation The address of the AgentRegistry implementation
+    /// @param _registrarImplementation The address of the AgentRegistrar implementation
+    /// @dev Deploy implementations separately first to avoid "max initcode size exceeded" errors
+    constructor(address _registryImplementation, address _registrarImplementation) {
+        require(_registryImplementation != address(0), "Invalid registry implementation");
+        require(_registrarImplementation != address(0), "Invalid registrar implementation");
+        registryImplementation = _registryImplementation;
+        registrarImplementation = _registrarImplementation;
     }
 
     /* --- Registry Deployment --- */
@@ -165,27 +163,27 @@ contract AgentRegistryFactory {
     /// @param registry The AgentRegistry to mint to
     /// @param mintPrice Price per mint in wei (0 = free)
     /// @param maxSupply Maximum supply (0 = unlimited)
-    /// @param owner Owner of the registrar
+    /// @param admin Admin of the registrar (receives ADMIN_ROLE, DEFAULT_ADMIN_ROLE, and MINTER_ROLE)
     /// @return registrar The address of the newly deployed registrar
     function deployRegistrar(
         AgentRegistry registry,
         uint256 mintPrice,
         uint256 maxSupply,
-        address owner
+        address admin
     ) external returns (address registrar) {
         registrar = registrarImplementation.clone();
-        AgentRegistrar(payable(registrar)).initialize(registry, mintPrice, maxSupply, owner);
+        AgentRegistrar(payable(registrar)).initialize(registry, mintPrice, maxSupply, admin);
         
         deployedRegistrars.push(registrar);
         isDeployedRegistrar[registrar] = true;
         
-        emit RegistrarDeployed(registrar, address(registry), owner);
+        emit RegistrarDeployed(registrar, address(registry), admin);
     }
 
     /* --- Combined Deployment --- */
 
     /// @notice Deploy both a registry and registrar together
-    /// @param admin The admin for the registry and owner of the registrar
+    /// @param admin The admin for the registry and registrar (receives all roles in both contracts)
     /// @param mintPrice Price per mint in wei (0 = free)
     /// @param maxSupply Maximum supply (0 = unlimited)
     /// @return registry The address of the deployed registry
@@ -233,7 +231,7 @@ contract AgentRegistryFactory {
     }
 
     /// @notice Deploy both a registry and registrar together with a name
-    /// @param admin The admin for the registry and owner of the registrar
+    /// @param admin The admin for the registry and registrar (receives all roles in both contracts)
     /// @param mintPrice Price per mint in wei (0 = free)
     /// @param maxSupply Maximum supply (0 = unlimited)
     /// @param name The name for the registry (stored as ERC-8049 contract metadata)
@@ -286,7 +284,7 @@ contract AgentRegistryFactory {
     }
 
     /// @notice Deploy both a registry and registrar with deterministic addresses
-    /// @param admin The admin for the registry and owner of the registrar
+    /// @param admin The admin for the registry and registrar (receives all roles in both contracts)
     /// @param mintPrice Price per mint in wei (0 = free)
     /// @param maxSupply Maximum supply (0 = unlimited)
     /// @param registrySalt Salt for registry address
@@ -338,7 +336,7 @@ contract AgentRegistryFactory {
     }
 
     /// @notice Deploy both a registry and registrar with deterministic addresses and a name
-    /// @param admin The admin for the registry and owner of the registrar
+    /// @param admin The admin for the registry and registrar (receives all roles in both contracts)
     /// @param mintPrice Price per mint in wei (0 = free)
     /// @param maxSupply Maximum supply (0 = unlimited)
     /// @param registrySalt Salt for registry address
