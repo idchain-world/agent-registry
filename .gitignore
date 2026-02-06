@@ -12,3 +12,6 @@ docs/
 
 # Dotenv file
 .env
+
+# Downloaded agent skills (run ./scripts/download-skills.sh to install)
+.claude/agents/*/skills/

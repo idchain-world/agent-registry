@@ -5,10 +5,10 @@ import {IERC6909} from "@openzeppelin/contracts/interfaces/IERC6909.sol";
 import {IERC8048} from "./IERC8048.sol";
 import {IERC8049} from "./IERC8049.sol";
 
-/// @title IAgentRegistry
+/// @title IERC8122
 /// @notice Interface for the Minimal Agent Registry
 /// @dev Extends ERC-6909 with ERC-8048 onchain metadata and ERC-8049 contract metadata
-interface IAgentRegistry is IERC6909, IERC8048, IERC8049 {
+interface IERC8122 is IERC6909, IERC8048, IERC8049 {
     /* --- Events --- */
 
     /// @notice Emitted when an agent is registered

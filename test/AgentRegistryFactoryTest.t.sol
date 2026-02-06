@@ -5,7 +5,7 @@ import "forge-std/Test.sol";
 import "../src/AgentRegistry.sol";
 import "../src/AgentRegistryFactory.sol";
 import "../src/AgentRegistrar.sol";
-import "../src/interfaces/IAgentRegistry.sol";
+import "../src/interfaces/IERC8122.sol";
 import {IERC8048} from "../src/interfaces/IERC8048.sol";
 import {IERC8049} from "../src/interfaces/IERC8049.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
@@ -45,9 +45,14 @@ contract AgentRegistryFactoryTest is Test {
     event RegistryAndRegistrarDeployed(address indexed registry, address indexed registrar, address indexed admin);
     
     /* --- Setup --- */
-    
+
     function setUp() public {
-        factory = new AgentRegistryFactory();
+        // Deploy implementations
+        AgentRegistry registryImpl = new AgentRegistry();
+        AgentRegistrar registrarImpl = new AgentRegistrar(registryImpl, 0, 0, address(this));
+
+        // Deploy factory with implementations
+        factory = new AgentRegistryFactory(address(registryImpl), address(registrarImpl));
     }
     
     /* ============================================================== */
@@ -480,10 +485,11 @@ contract AgentRegistryFactoryTest is Test {
         AgentRegistrar reg = AgentRegistrar(payable(registrar));
         assertEq(reg.mintPrice(), mintPrice, "Mint price should be set");
         assertEq(reg.maxSupply(), maxSupply, "Max supply should be set");
-        assertEq(reg.owner(), ADMIN1, "Owner should be admin");
+        assertTrue(reg.hasRole(reg.ADMIN_ROLE(), ADMIN1), "Admin should have ADMIN_ROLE");
         assertFalse(reg.open(), "Minting should be closed initially");
+        assertFalse(reg.publicMinting(), "Should default to private minting");
     }
-    
+
     function test_083____combinedDeploy____RegistrarHasRegistrarRole() public {
         (address registry, address registrar) = factory.deploy(ADMIN1, 0.01 ether, 1000);
         
@@ -512,7 +518,7 @@ contract AgentRegistryFactoryTest is Test {
         
         // Open minting
         vm.prank(ADMIN1);
-        reg.openMinting();
+        reg.openMinting(true);
         
         // Mint an agent
         vm.deal(OWNER1, 1 ether);
@@ -574,7 +580,7 @@ contract AgentRegistryFactoryTest is Test {
         
         AgentRegistrar reg = AgentRegistrar(payable(registrar));
         assertEq(address(reg.registry()), registry, "Should point to registry");
-        assertEq(reg.owner(), ADMIN2, "Owner should be ADMIN2");
+        assertTrue(reg.hasRole(reg.ADMIN_ROLE(), ADMIN2), "Admin should have ADMIN_ROLE");
     }
     
     function test_091____deployRegistrar____TracksRegistrar() public {
@@ -752,13 +758,13 @@ contract AgentRegistryFactoryTest is Test {
         uint256 maxSupply = 500;
         
         (, address registrar) = factory.deploy(ADMIN1, mintPrice, maxSupply, "Test Registry");
-        
+
         AgentRegistrar reg = AgentRegistrar(payable(registrar));
         assertEq(reg.mintPrice(), mintPrice, "Mint price should be set");
         assertEq(reg.maxSupply(), maxSupply, "Max supply should be set");
-        assertEq(reg.owner(), ADMIN1, "Owner should be admin");
+        assertTrue(reg.hasRole(reg.ADMIN_ROLE(), ADMIN1), "Admin should have ADMIN_ROLE");
     }
-    
+
     function test_124____combinedDeployWithName____AdminHasAllRoles() public {
         (address registry, ) = factory.deploy(ADMIN1, 0.01 ether, 1000, "Test Registry");
         AgentRegistry reg = AgentRegistry(registry);
@@ -803,7 +809,7 @@ contract AgentRegistryFactoryTest is Test {
         
         // Open minting
         vm.prank(ADMIN1);
-        reg.openMinting();
+        reg.openMinting(true);
         
         // Mint an agent
         vm.deal(OWNER1, 1 ether);
@@ -967,7 +973,7 @@ contract AgentRegistryFactoryTest is Test {
         
         // Open minting
         vm.prank(ADMIN1);
-        reg.openMinting();
+        reg.openMinting(true);
         
         // Mint an agent
         vm.deal(OWNER1, 1 ether);

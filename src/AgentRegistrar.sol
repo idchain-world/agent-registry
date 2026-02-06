@@ -5,7 +5,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {AgentRegistry} from "./AgentRegistry.sol";
-import {IAgentRegistry} from "./interfaces/IAgentRegistry.sol";
+import {IERC8122} from "./interfaces/IERC8122.sol";
 
 /// @title AgentRegistrar
 /// @notice A registrar contract that allows public or private minting of agents for a fee
@@ -156,14 +156,14 @@ contract AgentRegistrar is Initializable, AccessControl, ReentrancyGuard {
 
     /// @notice Mint an agent to the caller
     /// @return agentId The ID of the minted agent
-    function mint() external payable returns (uint256 agentId) {
+    function mint() external payable nonReentrant returns (uint256 agentId) {
         return _mintSimple(msg.sender);
     }
 
     /// @notice Mint an agent to a specific address
     /// @param to The address to receive the agent
     /// @return agentId The ID of the minted agent
-    function mint(address to) external payable returns (uint256 agentId) {
+    function mint(address to) external payable nonReentrant returns (uint256 agentId) {
         return _mintSimple(to);
     }
 
@@ -178,7 +178,7 @@ contract AgentRegistrar is Initializable, AccessControl, ReentrancyGuard {
         string calldata endpointType,
         string calldata endpoint,
         address agentAccount
-    ) external payable returns (uint256 agentId) {
+    ) external payable nonReentrant returns (uint256 agentId) {
         return _mintWithBasicMetadata(to, endpointType, endpoint, agentAccount);
     }
 
@@ -188,15 +188,15 @@ contract AgentRegistrar is Initializable, AccessControl, ReentrancyGuard {
     /// @return agentId The ID of the minted agent
     function mint(
         address to,
-        IAgentRegistry.MetadataEntry[] calldata metadata
-    ) external payable returns (uint256 agentId) {
+        IERC8122.MetadataEntry[] calldata metadata
+    ) external payable nonReentrant returns (uint256 agentId) {
         return _mintWithMetadata(to, metadata);
     }
 
     /// @notice Mint multiple agents to the caller
     /// @param count Number of agents to mint
     /// @return agentIds Array of minted agent IDs
-    function mintBatch(uint256 count) external payable returns (uint256[] memory agentIds) {
+    function mintBatch(uint256 count) external payable nonReentrant returns (uint256[] memory agentIds) {
         return _mintBatch(msg.sender, count);
     }
 
@@ -204,7 +204,7 @@ contract AgentRegistrar is Initializable, AccessControl, ReentrancyGuard {
     /// @param to The address to receive the agents
     /// @param count Number of agents to mint
     /// @return agentIds Array of minted agent IDs
-    function mintBatch(address to, uint256 count) external payable returns (uint256[] memory agentIds) {
+    function mintBatch(address to, uint256 count) external payable nonReentrant returns (uint256[] memory agentIds) {
         return _mintBatch(to, count);
     }
 
@@ -214,8 +214,8 @@ contract AgentRegistrar is Initializable, AccessControl, ReentrancyGuard {
     /// @return agentIds Array of minted agent IDs
     function mintBatch(
         address to,
-        IAgentRegistry.MetadataEntry[][] calldata metadata
-    ) external payable returns (uint256[] memory agentIds) {
+        IERC8122.MetadataEntry[][] calldata metadata
+    ) external payable nonReentrant returns (uint256[] memory agentIds) {
         return _mintBatchWithMetadata(to, metadata);
     }
 
@@ -359,7 +359,7 @@ contract AgentRegistrar is Initializable, AccessControl, ReentrancyGuard {
     /// @dev Internal mint function with flexible metadata
     function _mintWithMetadata(
         address to,
-        IAgentRegistry.MetadataEntry[] calldata metadata
+        IERC8122.MetadataEntry[] calldata metadata
     ) internal returns (uint256 agentId) {
         _checkMintAndPay(1);
 
@@ -386,7 +386,7 @@ contract AgentRegistrar is Initializable, AccessControl, ReentrancyGuard {
     /// @dev Internal batch mint function with metadata
     function _mintBatchWithMetadata(
         address to,
-        IAgentRegistry.MetadataEntry[][] calldata metadata
+        IERC8122.MetadataEntry[][] calldata metadata
     ) internal returns (uint256[] memory agentIds) {
         uint256 count = metadata.length;
         _checkMintAndPay(count);

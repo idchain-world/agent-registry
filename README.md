@@ -1,6 +1,6 @@
 # Minimal Agent Registry
 
-A complete, production-ready system for building **decentralized AI agent networks** on Ethereum. Deploy your own agent registry with customizable minting, fees, supply limits, and onchain metadata—all with 95% gas savings through EIP-1167 minimal clones.
+A complete, production-ready system for building **decentralized AI agent registries** on Ethereum. Deploy your own ERC-8122 agent registry with customizable minting, fees, supply limits, and onchain metadata—all with 95% gas savings through EIP-1167 minimal clones.
 
 ## Overview
 
@@ -29,7 +29,7 @@ While offchain agent protocols handle capabilities advertisement and task orches
 ┌────────────────────────────────────────────────────────────────────┐
 │                     AgentRegistryFactory                           │
 │  ┌─────────────────────────┐    ┌─────────────────────────┐        │ 
-│  │  Registry Imp.          │    │ Registrar Imp.          │        │ 
+│  │  ERC-8122 Registry Imp. │    │ Registrar Imp.          │        │ 
 │  │      (ERC-6909 +        │    │   (Minting + Fees +     │        │
 │  │   ERC-8048 + Roles)     │    │   Supply Control)       │        │
 │  └─────────────────────────┘    └─────────────────────────┘        │
@@ -49,11 +49,12 @@ While offchain agent protocols handle capabilities advertisement and task orches
 
 ## System Components
 
-### 1. AgentRegistry
+### 1. ERC-8122 AgentRegistry
 
 The core contract that stores agents and their metadata.
 
 **Features:**
+
 - ERC-6909 token standard with single ownership (balance is always 0 or 1)
 - ERC-8048 onchain key-value metadata per agent
 - ERC-8049 contract-level metadata for the registry itself
@@ -109,16 +110,18 @@ An optional companion contract for public or private minting with economic contr
 
 ### 3. AgentRegistryFactory
 
-A gas-efficient factory for deploying registries and registrars using EIP-1167 minimal clones.
+A gas-efficient factory for deploying ERC-8122 registries and registrars using EIP-1167 minimal clones.
 
 **Key Features:**
-- Deploy registry + registrar together or separately
+
+- Deploy ERC-8122 registry + registrar together or separately
 - Set registry name via ERC-8049 contract metadata during deployment
 - Deterministic deployment with predictable addresses
 - Automatic role setup when deploying pairs
 - Tracks all deployed contracts with enumeration functions
 
 **Deployment Functions:**
+
 - `deployRegistry(admin)` / `deployRegistry(admin, name)` - Deploy registry only
 - `deploy(admin, mintPrice, maxSupply)` / `deploy(admin, mintPrice, maxSupply, name)` - Deploy registry + registrar together
 - `deployRegistryDeterministic(admin, salt)` / `deployRegistryDeterministic(admin, salt, name)` - Deterministic registry deployment

@@ -3,7 +3,7 @@ pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
 import "../src/AgentRegistry.sol";
-import "../src/interfaces/IAgentRegistry.sol";
+import "../src/interfaces/IERC8122.sol";
 import {IERC6909} from "@openzeppelin/contracts/interfaces/IERC6909.sol";
 import {IERC8048} from "../src/interfaces/IERC8048.sol";
 import {IERC8049} from "../src/interfaces/IERC8049.sol";
@@ -50,8 +50,8 @@ contract AgentRegistryTest is Test {
     
     /* --- Helper Functions --- */
     
-    function _createMetadataEntry(string memory key, bytes memory value) internal pure returns (IAgentRegistry.MetadataEntry memory) {
-        return IAgentRegistry.MetadataEntry({key: key, value: value});
+    function _createMetadataEntry(string memory key, bytes memory value) internal pure returns (IERC8122.MetadataEntry memory) {
+        return IERC8122.MetadataEntry({key: key, value: value});
     }
     
     function _registerBasicAgent() internal returns (uint256) {
@@ -90,7 +90,7 @@ contract AgentRegistryTest is Test {
     }
     
     function test_004____registration____MetadataArrayRegistrationWorks() public {
-        IAgentRegistry.MetadataEntry[] memory metadata = new IAgentRegistry.MetadataEntry[](3);
+        IERC8122.MetadataEntry[] memory metadata = new IERC8122.MetadataEntry[](3);
         metadata[0] = _createMetadataEntry("name", bytes("My Agent"));
         metadata[1] = _createMetadataEntry("endpoint_type", bytes("a2a"));
         metadata[2] = _createMetadataEntry("endpoint", bytes("https://a2a.example.com"));
@@ -110,15 +110,15 @@ contract AgentRegistryTest is Test {
         owners[1] = OWNER2;
         owners[2] = OWNER1;
         
-        IAgentRegistry.MetadataEntry[][] memory metadata = new IAgentRegistry.MetadataEntry[][](3);
+        IERC8122.MetadataEntry[][] memory metadata = new IERC8122.MetadataEntry[][](3);
         
-        metadata[0] = new IAgentRegistry.MetadataEntry[](1);
+        metadata[0] = new IERC8122.MetadataEntry[](1);
         metadata[0][0] = _createMetadataEntry("name", bytes("Agent 1"));
         
-        metadata[1] = new IAgentRegistry.MetadataEntry[](1);
+        metadata[1] = new IERC8122.MetadataEntry[](1);
         metadata[1][0] = _createMetadataEntry("name", bytes("Agent 2"));
         
-        metadata[2] = new IAgentRegistry.MetadataEntry[](1);
+        metadata[2] = new IERC8122.MetadataEntry[](1);
         metadata[2][0] = _createMetadataEntry("name", bytes("Agent 3"));
         
         vm.prank(REGISTRAR);
@@ -143,8 +143,8 @@ contract AgentRegistryTest is Test {
         owners[0] = OWNER1;
         owners[1] = OWNER2;
         
-        IAgentRegistry.MetadataEntry[][] memory metadata = new IAgentRegistry.MetadataEntry[][](1);
-        metadata[0] = new IAgentRegistry.MetadataEntry[](0);
+        IERC8122.MetadataEntry[][] memory metadata = new IERC8122.MetadataEntry[][](1);
+        metadata[0] = new IERC8122.MetadataEntry[](0);
         
         vm.prank(REGISTRAR);
         vm.expectRevert(AgentRegistry.ArrayLengthMismatch.selector);
@@ -425,7 +425,7 @@ contract AgentRegistryTest is Test {
     function test_037____events____RegisteredEventEmitted() public {
         vm.prank(REGISTRAR);
         vm.expectEmit(true, true, false, true);
-        emit IAgentRegistry.Registered(0, OWNER1, "mcp", "https://agent.example.com", AGENT_ACCOUNT1);
+        emit IERC8122.Registered(0, OWNER1, "mcp", "https://agent.example.com", AGENT_ACCOUNT1);
         
         registry.register(OWNER1, "mcp", "https://agent.example.com", AGENT_ACCOUNT1);
     }
@@ -526,12 +526,188 @@ contract AgentRegistryTest is Test {
         // Register an agent first
         vm.prank(REGISTRAR);
         uint256 realAgentId = registry.register(OWNER1, "mcp", "", address(0));
-        
+
         // Use the real agent ID
         vm.prank(OWNER1);
         registry.setMetadata(realAgentId, key, value);
-        
+
         assertEq(registry.getMetadata(realAgentId, key), value);
+    }
+
+    /* ============================================================== */
+    /*          SECURITY: ZERO-ADDRESS REGISTRATION (C3)              */
+    /* ============================================================== */
+
+    function test_C3_001____zeroAddress____RegisterToZeroAddressReverts() public {
+        // register() now checks for address(0) owner and reverts
+        vm.prank(REGISTRAR);
+        vm.expectRevert(AgentRegistry.ZeroAddressOwner.selector);
+        registry.register(address(0), "mcp", "https://example.com", address(0));
+
+        // No agent was created
+        assertEq(registry.agentIndex(), 0, "No agent should be registered");
+    }
+
+    function test_C3_002____zeroAddress____RegisterWithMetadataToZeroAddressReverts() public {
+        // register() with metadata array also checks for zero address
+        IERC8122.MetadataEntry[] memory metadata = new IERC8122.MetadataEntry[](1);
+        metadata[0] = _createMetadataEntry("name", bytes("Test"));
+
+        vm.prank(REGISTRAR);
+        vm.expectRevert(AgentRegistry.ZeroAddressOwner.selector);
+        registry.register(address(0), metadata);
+
+        // No agent was created
+        assertEq(registry.agentIndex(), 0, "No agent should be registered");
+    }
+
+    function test_C3_003____zeroAddress____BatchRegisterWithZeroAddressReverts() public {
+        // registerBatch with a zero-address owner also reverts
+        address[] memory owners = new address[](2);
+        owners[0] = OWNER1;
+        owners[1] = address(0);
+
+        IERC8122.MetadataEntry[][] memory metadata = new IERC8122.MetadataEntry[][](2);
+        metadata[0] = new IERC8122.MetadataEntry[](1);
+        metadata[0][0] = _createMetadataEntry("name", bytes("Agent 1"));
+        metadata[1] = new IERC8122.MetadataEntry[](1);
+        metadata[1][0] = _createMetadataEntry("name", bytes("Agent 2"));
+
+        vm.prank(REGISTRAR);
+        vm.expectRevert(AgentRegistry.ZeroAddressOwner.selector);
+        registry.registerBatch(owners, metadata);
+    }
+
+    /* ============================================================== */
+    /*          SECURITY: TRANSFER TO ZERO ADDRESS (C4)               */
+    /* ============================================================== */
+
+    function test_C4_001____transferToZero____TransferRevertsOnZeroReceiver() public {
+        uint256 agentId = _registerBasicAgent();
+        assertEq(registry.ownerOf(agentId), OWNER1);
+
+        // transfer() now checks for address(0) receiver and reverts
+        vm.prank(OWNER1);
+        vm.expectRevert(AgentRegistry.ZeroAddressReceiver.selector);
+        registry.transfer(address(0), agentId, 1);
+
+        // Token is still owned by OWNER1
+        assertEq(registry.ownerOf(agentId), OWNER1, "OWNER1 should still own agent");
+    }
+
+    function test_C4_002____transferToZero____TransferFromRevertsOnZeroReceiver() public {
+        uint256 agentId = _registerBasicAgent();
+
+        // Set OPERATOR1 as operator
+        vm.prank(OWNER1);
+        registry.setOperator(OPERATOR1, true);
+
+        // transferFrom to address(0) now reverts
+        vm.prank(OPERATOR1);
+        vm.expectRevert(AgentRegistry.ZeroAddressReceiver.selector);
+        registry.transferFrom(OWNER1, address(0), agentId, 1);
+
+        // Token is still owned by OWNER1
+        assertEq(registry.ownerOf(agentId), OWNER1, "OWNER1 should still own agent");
+    }
+
+    function test_C4_003____transferToZero____ApprovalNotConsumedOnZeroRevert() public {
+        uint256 agentId = _registerBasicAgent();
+
+        // Approve OPERATOR1
+        vm.prank(OWNER1);
+        registry.approve(OPERATOR1, agentId, 1);
+
+        // transferFrom to address(0) reverts before consuming approval
+        vm.prank(OPERATOR1);
+        vm.expectRevert(AgentRegistry.ZeroAddressReceiver.selector);
+        registry.transferFrom(OWNER1, address(0), agentId, 1);
+
+        // Approval should still exist (revert rolled back everything)
+        assertEq(registry.allowance(OWNER1, OPERATOR1, agentId), 1,
+            "Approval should not be consumed on revert");
+    }
+
+    function test_C4_004____transferToZero____ValidTransferStillWorks() public {
+        uint256 agentId = _registerBasicAgent();
+
+        // Valid transfer to non-zero address still works
+        vm.prank(OWNER1);
+        registry.transfer(OWNER2, agentId, 1);
+
+        assertEq(registry.ownerOf(agentId), OWNER2, "OWNER2 should own agent after valid transfer");
+    }
+
+    /* ============================================================== */
+    /*                    EDGE CASES: H6, H7                          */
+    /* ============================================================== */
+
+    function test_H6_001____edgeCase____TransferFromSelfNoApprovalNeeded() public {
+        uint256 agentId = _registerBasicAgent();
+
+        // transferFrom where sender == msg.sender should work without approval
+        // _checkApprovedOwnerOrOperator short-circuits: if (sender == msg.sender) return;
+        vm.prank(OWNER1);
+        bool success = registry.transferFrom(OWNER1, OWNER2, agentId, 1);
+
+        assertTrue(success, "Self-transferFrom should succeed");
+        assertEq(registry.ownerOf(agentId), OWNER2, "OWNER2 should own agent");
+    }
+
+    function test_H6_002____edgeCase____TransferFromSelfDoesNotConsumeApproval() public {
+        uint256 agentId = _registerBasicAgent();
+
+        // Approve a spender first
+        vm.prank(OWNER1);
+        registry.approve(OPERATOR1, agentId, 1);
+        assertEq(registry.allowance(OWNER1, OPERATOR1, agentId), 1, "Approval should exist");
+
+        // Owner uses transferFrom on themselves — approval should NOT be consumed
+        vm.prank(OWNER1);
+        registry.transferFrom(OWNER1, OWNER2, agentId, 1);
+
+        // Approval should still exist (it wasn't consumed because sender == msg.sender short-circuits)
+        assertEq(registry.allowance(OWNER1, OPERATOR1, agentId), 1,
+            "Approval should persist after self-transferFrom");
+    }
+
+    function test_H7_001____edgeCase____ApproveWithAmountGreaterThanOne() public {
+        uint256 agentId = _registerBasicAgent();
+
+        // approve() treats any amount > 0 as approved (stored as bool true)
+        vm.prank(OWNER1);
+        registry.approve(OPERATOR1, agentId, 100);
+
+        // allowance returns 1 (not 100) because it's stored as bool
+        assertEq(registry.allowance(OWNER1, OPERATOR1, agentId), 1,
+            "Allowance should be 1 regardless of amount > 0");
+
+        // Approval still works for transfer
+        vm.prank(OPERATOR1);
+        bool success = registry.transferFrom(OWNER1, OWNER2, agentId, 1);
+        assertTrue(success, "Transfer should work with amount>1 approval");
+
+        // Approval is consumed after transfer
+        assertEq(registry.allowance(OWNER1, OPERATOR1, agentId), 0,
+            "Approval should be consumed after transfer");
+    }
+
+    function test_H7_002____edgeCase____ApproveWithAmountOneAndMaxUint() public {
+        uint256 agentId = _registerBasicAgent();
+
+        // Approve with type(uint256).max — still stored as bool true
+        vm.prank(OWNER1);
+        registry.approve(OPERATOR1, agentId, type(uint256).max);
+
+        assertEq(registry.allowance(OWNER1, OPERATOR1, agentId), 1,
+            "Max uint approval still shows as 1");
+
+        // Still consumed after single transfer
+        vm.prank(OPERATOR1);
+        registry.transferFrom(OWNER1, OWNER2, agentId, 1);
+
+        assertEq(registry.allowance(OWNER1, OPERATOR1, agentId), 0,
+            "Max uint approval consumed after one transfer");
     }
 }
 

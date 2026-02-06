@@ -1,0 +1,43 @@
+{
+  "repos": {
+    "tob": "https://github.com/trailofbits/skills"
+  },
+  "agents": {
+    "project-manager": [
+      { "repo": "tob", "plugin": "ask-questions-if-underspecified" }
+    ],
+    "solidity-dev": [
+      { "repo": "tob", "plugin": "fix-review" }
+    ],
+    "security-contracts": [
+      {
+        "repo": "tob",
+        "plugin": "building-secure-contracts",
+        "skills": [
+          "audit-prep-assistant",
+          "code-maturity-assessor",
+          "guidelines-advisor",
+          "secure-workflow-guide",
+          "token-integration-analyzer"
+        ]
+      },
+      { "repo": "tob", "plugin": "entry-point-analyzer" }
+    ],
+    "security-audit": [
+      { "repo": "tob", "plugin": "audit-context-building" },
+      { "repo": "tob", "plugin": "differential-review" },
+      { "repo": "tob", "plugin": "sharp-edges" },
+      { "repo": "tob", "plugin": "insecure-defaults" }
+    ],
+    "security-testing": [
+      {
+        "repo": "tob",
+        "plugin": "static-analysis",
+        "skills": ["codeql", "semgrep", "sarif-parsing"]
+      },
+      { "repo": "tob", "plugin": "property-based-testing" },
+      { "repo": "tob", "plugin": "variant-analysis" },
+      { "repo": "tob", "plugin": "spec-to-code-compliance" }
+    ]
+  }
+}

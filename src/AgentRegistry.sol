@@ -5,18 +5,18 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC6909} from "@openzeppelin/contracts/interfaces/IERC6909.sol";
-import {IAgentRegistry} from "./interfaces/IAgentRegistry.sol";
+import {IERC8122} from "./interfaces/IERC8122.sol";
 import {ERC8048} from "./extensions/ERC8048.sol";
 import {ERC8049} from "./extensions/ERC8049.sol";
 import {IERC8048} from "./interfaces/IERC8048.sol";
 import {IERC8049} from "./interfaces/IERC8049.sol";
 
-/// @title AgentRegistry
+/// @title ERC-8122 AgentRegistry
 /// @notice A minimal onchain registry for discovering AI agents
 /// @dev Implements ERC-6909 with single ownership, ERC-8048 metadata, ERC-8049 contract metadata,
 ///      and uses AccessControl for contract-level permissions with ERC-6909-style token authorization.
 ///      Supports both standalone deployment and minimal clone (EIP-1167) deployment.
-contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048, ERC8049 {
+contract AgentRegistry is IERC8122, AccessControl, Initializable, ERC8048, ERC8049 {
     /* --- Constants --- */
 
     /// @notice Role for registering new agents
@@ -55,6 +55,12 @@ contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048,
 
     /// @notice Thrown when array lengths don't match in batch operations
     error ArrayLengthMismatch();
+
+    /// @notice Thrown when registering an agent to the zero address
+    error ZeroAddressOwner();
+
+    /// @notice Thrown when transferring to the zero address
+    error ZeroAddressReceiver();
 
     /* --- Constructor --- */
 
@@ -98,7 +104,7 @@ contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048,
         return _approvals[owner][spender][id] ? 1 : 0;
     }
 
-    /// @inheritdoc IAgentRegistry
+    /// @inheritdoc IERC8122
     function ownerOf(uint256 agentId) external view returns (address) {
         address owner = _owners[agentId];
         if (owner == address(0)) revert AgentNotFound();
@@ -109,6 +115,7 @@ contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048,
 
     /// @inheritdoc IERC6909
     function transfer(address receiver, uint256 id, uint256 amount) public returns (bool) {
+        if (receiver == address(0)) revert ZeroAddressReceiver();
         if (amount != 1) revert InvalidAmount();
         if (_owners[id] != msg.sender) revert InsufficientBalance(msg.sender, id);
 
@@ -120,6 +127,7 @@ contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048,
 
     /// @inheritdoc IERC6909
     function transferFrom(address sender, address receiver, uint256 id, uint256 amount) public returns (bool) {
+        if (receiver == address(0)) revert ZeroAddressReceiver();
         if (amount != 1) revert InvalidAmount();
 
         _checkApprovedOwnerOrOperator(sender, id);
@@ -151,13 +159,14 @@ contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048,
 
     /* --- Registration Functions --- */
 
-    /// @inheritdoc IAgentRegistry
+    /// @inheritdoc IERC8122
     function register(
         address owner,
         string calldata endpointType,
         string calldata endpoint,
         address agentAccount
     ) external onlyRole(REGISTRAR_ROLE) returns (uint256 agentId) {
+        if (owner == address(0)) revert ZeroAddressOwner();
         agentId = agentIndex++;
 
         // Set owner and mint token
@@ -182,7 +191,7 @@ contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048,
         emit Registered(agentId, owner, endpointType, endpoint, agentAccount);
     }
 
-    /// @inheritdoc IAgentRegistry
+    /// @inheritdoc IERC8122
     function register(
         address owner,
         MetadataEntry[] calldata metadata
@@ -190,7 +199,7 @@ contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048,
         agentId = _register(owner, metadata);
     }
 
-    /// @inheritdoc IAgentRegistry
+    /// @inheritdoc IERC8122
     function registerBatch(
         address[] calldata owners,
         MetadataEntry[][] calldata metadata
@@ -206,7 +215,7 @@ contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048,
 
     /* --- ERC-8048 Metadata Functions --- */
 
-    /// @inheritdoc IAgentRegistry
+    /// @inheritdoc IERC8122
     /// @dev Only the owner or an approved operator can set metadata for an agent
     function setMetadata(uint256 agentId, string calldata key, bytes calldata value) external {
         _checkAgentAuthorization(agentId);
@@ -215,7 +224,7 @@ contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048,
 
     /* --- ERC-8049 Contract Metadata Functions --- */
 
-    /// @inheritdoc IAgentRegistry
+    /// @inheritdoc IERC8122
     function setContractMetadata(string calldata key, bytes calldata value) external onlyRole(METADATA_ADMIN_ROLE) {
         _setContractMetadata(key, value);
     }
@@ -224,6 +233,7 @@ contract AgentRegistry is IAgentRegistry, AccessControl, Initializable, ERC8048,
 
     /// @dev Register a new agent with metadata entries
     function _register(address owner, MetadataEntry[] calldata metadata) internal returns (uint256 agentId) {
+        if (owner == address(0)) revert ZeroAddressOwner();
         agentId = agentIndex++;
 
         // Set owner and mint token

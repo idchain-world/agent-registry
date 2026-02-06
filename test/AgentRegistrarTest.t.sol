@@ -4,7 +4,7 @@ pragma solidity ^0.8.25;
 import "forge-std/Test.sol";
 import "../src/AgentRegistry.sol";
 import "../src/AgentRegistrar.sol";
-import "../src/interfaces/IAgentRegistry.sol";
+import "../src/interfaces/IERC8122.sol";
 
 /**
  * @title AgentRegistrarTest
@@ -61,6 +61,7 @@ contract AgentRegistrarTest is Test {
         registry.grantRole(registry.REGISTRAR_ROLE(), address(registrar));
         
         // Fund test users
+        vm.deal(OWNER, 10 ether);
         vm.deal(USER1, 10 ether);
         vm.deal(USER2, 10 ether);
     }
@@ -572,9 +573,9 @@ contract AgentRegistrarTest is Test {
         vm.prank(OWNER);
         registrar.openMinting(true);
         
-        IAgentRegistry.MetadataEntry[] memory metadata = new IAgentRegistry.MetadataEntry[](2);
-        metadata[0] = IAgentRegistry.MetadataEntry("name", bytes("Test Agent"));
-        metadata[1] = IAgentRegistry.MetadataEntry("description", bytes("A test agent"));
+        IERC8122.MetadataEntry[] memory metadata = new IERC8122.MetadataEntry[](2);
+        metadata[0] = IERC8122.MetadataEntry("name", bytes("Test Agent"));
+        metadata[1] = IERC8122.MetadataEntry("description", bytes("A test agent"));
         
         vm.prank(USER1);
         uint256 agentId = registrar.mint{value: MINT_PRICE}(USER1, metadata);
@@ -588,13 +589,13 @@ contract AgentRegistrarTest is Test {
         vm.prank(OWNER);
         registrar.openMinting(true);
         
-        IAgentRegistry.MetadataEntry[][] memory allMetadata = new IAgentRegistry.MetadataEntry[][](2);
+        IERC8122.MetadataEntry[][] memory allMetadata = new IERC8122.MetadataEntry[][](2);
         
-        allMetadata[0] = new IAgentRegistry.MetadataEntry[](1);
-        allMetadata[0][0] = IAgentRegistry.MetadataEntry("name", bytes("Agent 1"));
+        allMetadata[0] = new IERC8122.MetadataEntry[](1);
+        allMetadata[0][0] = IERC8122.MetadataEntry("name", bytes("Agent 1"));
         
-        allMetadata[1] = new IAgentRegistry.MetadataEntry[](1);
-        allMetadata[1][0] = IAgentRegistry.MetadataEntry("name", bytes("Agent 2"));
+        allMetadata[1] = new IERC8122.MetadataEntry[](1);
+        allMetadata[1][0] = IERC8122.MetadataEntry("name", bytes("Agent 2"));
         
         vm.prank(USER1);
         uint256[] memory agentIds = registrar.mintBatch{value: MINT_PRICE * 2}(USER1, allMetadata);
@@ -671,10 +672,11 @@ contract AgentRegistrarTest is Test {
     function test_102____publicPrivateMinting____CanGrantMinterRole() public {
         vm.prank(OWNER);
         registrar.openMinting(false);
-        
+
         // Grant MINTER_ROLE to USER1
+        bytes32 minterRole = registrar.MINTER_ROLE();
         vm.prank(OWNER);
-        registrar.grantRole(registrar.MINTER_ROLE(), USER1);
+        registrar.grantRole(minterRole, USER1);
         
         // Now USER1 can mint
         vm.prank(USER1);
@@ -746,10 +748,11 @@ contract AgentRegistrarTest is Test {
     function test_106____publicPrivateMinting____BatchMintingRespectsPrivateMode() public {
         vm.prank(OWNER);
         registrar.openMinting(false);
-        
+
         // Grant MINTER_ROLE to USER1
+        bytes32 minterRole = registrar.MINTER_ROLE();
         vm.prank(OWNER);
-        registrar.grantRole(registrar.MINTER_ROLE(), USER1);
+        registrar.grantRole(minterRole, USER1);
         
         // USER1 can batch mint
         vm.prank(USER1);
@@ -779,16 +782,18 @@ contract AgentRegistrarTest is Test {
     }
     
     function test_111____publicPrivateMinting____NonAdminCannotGrantMinterRole() public {
+        bytes32 minterRole = registrar.MINTER_ROLE();
         vm.prank(RANDOM);
         vm.expectRevert();
-        registrar.grantRole(registrar.MINTER_ROLE(), USER1);
+        registrar.grantRole(minterRole, USER1);
     }
     
     function test_112____publicPrivateMinting____AdminCanGrantMinterRole() public {
+        bytes32 minterRole = registrar.MINTER_ROLE();
         vm.prank(OWNER);
-        registrar.grantRole(registrar.MINTER_ROLE(), USER1);
-        
-        assertTrue(registrar.hasRole(registrar.MINTER_ROLE(), USER1), "USER1 should have MINTER_ROLE");
+        registrar.grantRole(minterRole, USER1);
+
+        assertTrue(registrar.hasRole(minterRole, USER1), "USER1 should have MINTER_ROLE");
     }
     
     function test_113____publicPrivateMinting____AdminCanRevokeMinterRole() public {
@@ -837,11 +842,327 @@ contract AgentRegistrarTest is Test {
     
     function testFuzz_setMintPrice(uint256 newPrice) public {
         vm.assume(newPrice <= 100 ether);
-        
+
         vm.prank(OWNER);
         registrar.setMintPrice(newPrice);
-        
+
         assertEq(registrar.mintPrice(), newPrice, "Price should be updated");
+    }
+
+    /* ============================================================== */
+    /*                   SECURITY: REENTRANCY (C2)                    */
+    /* ============================================================== */
+
+    function test_C2_001____reentrancy____NonReentrantBlocksReentrantMint() public {
+        // Deploy a registrar with small maxSupply
+        AgentRegistrar smallRegistrar = new AgentRegistrar(registry, MINT_PRICE, 2, OWNER);
+        registry.grantRole(registry.REGISTRAR_ROLE(), address(smallRegistrar));
+
+        vm.prank(OWNER);
+        smallRegistrar.openMinting(true);
+
+        // Deploy reentrancy attacker
+        ReentrancyAttacker attacker = new ReentrancyAttacker(smallRegistrar);
+        vm.deal(address(attacker), 10 ether);
+
+        // Attacker calls mint with overpayment; receive() tries to re-enter mint()
+        // but nonReentrant modifier blocks the re-entrant call, causing the
+        // refund to fail and the entire transaction to revert with TransferFailed
+        vm.expectRevert(AgentRegistrar.TransferFailed.selector);
+        attacker.attack();
+
+        // No agents were minted
+        assertEq(smallRegistrar.totalMinted(), 0, "No agents should be minted");
+    }
+
+    function test_C2_002____reentrancy____NonReentrantProtectsMaxSupply() public {
+        // Deploy registrar with maxSupply = 1
+        AgentRegistrar tinyRegistrar = new AgentRegistrar(registry, MINT_PRICE, 1, OWNER);
+        registry.grantRole(registry.REGISTRAR_ROLE(), address(tinyRegistrar));
+
+        vm.prank(OWNER);
+        tinyRegistrar.openMinting(true);
+
+        // The attacker tries to re-enter during refund
+        ReentrancyAttacker attacker = new ReentrancyAttacker(tinyRegistrar);
+        vm.deal(address(attacker), 10 ether);
+
+        // nonReentrant blocks re-entry, refund fails, transaction reverts
+        vm.expectRevert(AgentRegistrar.TransferFailed.selector);
+        attacker.attack();
+
+        // maxSupply is protected — no agents minted
+        assertEq(tinyRegistrar.totalMinted(), 0, "totalMinted should be 0");
+        assertLe(tinyRegistrar.totalMinted(), tinyRegistrar.maxSupply(),
+            "totalMinted should not exceed maxSupply");
+    }
+
+    /* ============================================================== */
+    /*              SECURITY: OVERFLOW IN BATCH COST (C5)             */
+    /* ============================================================== */
+
+    function test_C5_001____overflow____MintPriceTimesCountRevertsOnOverflow() public {
+        // Set an extreme mint price that will overflow when multiplied by count
+        uint256 extremePrice = type(uint256).max / 2;
+
+        AgentRegistrar overflowRegistrar = new AgentRegistrar(registry, extremePrice, 0, OWNER);
+        registry.grantRole(registry.REGISTRAR_ROLE(), address(overflowRegistrar));
+
+        vm.prank(OWNER);
+        overflowRegistrar.openMinting(true);
+
+        // mintPrice * 3 overflows: (type(uint256).max / 2) * 3 > type(uint256).max
+        // Solidity 0.8 should revert with arithmetic overflow
+        vm.deal(USER1, type(uint256).max);
+        vm.prank(USER1);
+        vm.expectRevert(); // Panic(0x11) - arithmetic overflow
+        overflowRegistrar.mintBatch{value: 1 ether}(3);
+    }
+
+    function test_C5_002____overflow____MaxUint256PriceRevertsOnMint() public {
+        // Set mintPrice to max uint256; even count=1 should work but count=2 overflows
+        uint256 maxPrice = type(uint256).max;
+
+        AgentRegistrar maxRegistrar = new AgentRegistrar(registry, maxPrice, 0, OWNER);
+        registry.grantRole(registry.REGISTRAR_ROLE(), address(maxRegistrar));
+
+        vm.prank(OWNER);
+        maxRegistrar.openMinting(true);
+
+        vm.deal(USER1, type(uint256).max);
+        vm.prank(USER1);
+        vm.expectRevert(); // Overflow on mintPrice * 2
+        maxRegistrar.mintBatch{value: type(uint256).max}(2);
+    }
+
+    function test_C5_003____overflow____StateConsistentAfterOverflowRevert() public {
+        uint256 extremePrice = type(uint256).max / 2;
+
+        AgentRegistrar overflowRegistrar = new AgentRegistrar(registry, extremePrice, 0, OWNER);
+        registry.grantRole(registry.REGISTRAR_ROLE(), address(overflowRegistrar));
+
+        vm.prank(OWNER);
+        overflowRegistrar.openMinting(true);
+
+        // Attempt overflowing batch — should revert cleanly
+        vm.deal(USER1, type(uint256).max);
+        vm.prank(USER1);
+        vm.expectRevert();
+        overflowRegistrar.mintBatch{value: 1 ether}(3);
+
+        // State should be unchanged after revert
+        assertEq(overflowRegistrar.totalMinted(), 0, "totalMinted should be 0 after revert");
+        assertTrue(overflowRegistrar.open(), "Minting should still be open");
+    }
+
+    /* ============================================================== */
+    /*                  EDGE CASES: H1 - H5, H8, H9                  */
+    /* ============================================================== */
+
+    function test_H1_001____edgeCase____MintBatchZeroCountSucceeds() public {
+        vm.prank(OWNER);
+        registrar.openMinting(true);
+
+        vm.prank(USER1);
+        uint256[] memory agentIds = registrar.mintBatch{value: 0}(0);
+
+        // Should return empty array and not change state
+        assertEq(agentIds.length, 0, "Should return empty array for count=0");
+        assertEq(registrar.totalMinted(), 0, "totalMinted should remain 0");
+    }
+
+    function test_H1_002____edgeCase____MintBatchZeroCountWithOverpaymentRefunds() public {
+        vm.prank(OWNER);
+        registrar.openMinting(true);
+
+        uint256 balanceBefore = USER1.balance;
+
+        // Send ETH with a zero-count batch — totalCost is 0, so all is overpayment
+        vm.prank(USER1);
+        registrar.mintBatch{value: 0.1 ether}(0);
+
+        // All ETH should be refunded
+        assertEq(USER1.balance, balanceBefore, "All ETH should be refunded for count=0");
+        assertEq(registrar.totalMinted(), 0, "No agents should be minted");
+    }
+
+    function test_H2_001____edgeCase____ReceiveRawETH() public {
+        // AgentRegistrar has receive() external payable {}
+        uint256 amount = 1 ether;
+        vm.deal(USER1, amount);
+
+        vm.prank(USER1);
+        (bool success, ) = address(registrar).call{value: amount}("");
+
+        assertTrue(success, "Registrar should accept raw ETH");
+        assertEq(address(registrar).balance, amount, "Registrar should hold the ETH");
+    }
+
+    function test_H2_002____edgeCase____ReceiveRawETHWithdrawable() public {
+        // Send raw ETH, then admin withdraws it
+        vm.deal(USER1, 1 ether);
+        vm.prank(USER1);
+        (bool sent, ) = address(registrar).call{value: 1 ether}("");
+        assertTrue(sent, "Should accept raw ETH");
+
+        uint256 ownerBalanceBefore = OWNER.balance;
+
+        vm.prank(OWNER);
+        registrar.withdraw();
+
+        assertEq(OWNER.balance, ownerBalanceBefore + 1 ether, "Admin should withdraw raw ETH");
+        assertEq(address(registrar).balance, 0, "Registrar should be empty");
+    }
+
+    function test_H3_001____edgeCase____WithdrawZeroBalance() public {
+        // Withdraw with zero balance — .call{value: 0}("") succeeds
+        assertEq(address(registrar).balance, 0, "Registrar should start with 0 balance");
+
+        uint256 ownerBalanceBefore = OWNER.balance;
+
+        vm.prank(OWNER);
+        registrar.withdraw();
+
+        assertEq(OWNER.balance, ownerBalanceBefore, "Owner balance unchanged");
+    }
+
+    function test_H3_002____edgeCase____WithdrawAmountZero() public {
+        // withdraw(0) should succeed
+        vm.prank(OWNER);
+        registrar.withdraw(0);
+    }
+
+    function test_H4_001____edgeCase____CloseMintingPreservesPublicMintingFlag() public {
+        // Open as public
+        vm.startPrank(OWNER);
+        registrar.openMinting(true);
+        assertTrue(registrar.publicMinting(), "Should be public");
+
+        // Close minting — closeMinting() only sets open=false, doesn't touch publicMinting
+        registrar.closeMinting();
+        assertFalse(registrar.open(), "Should be closed");
+        assertTrue(registrar.publicMinting(), "publicMinting flag should persist after close");
+
+        // Reopen as private — now publicMinting changes
+        registrar.openMinting(false);
+        assertTrue(registrar.open(), "Should be open again");
+        assertFalse(registrar.publicMinting(), "publicMinting should now be false");
+        vm.stopPrank();
+    }
+
+    function test_H4_002____edgeCase____CloseMintingDoesNotResetPublicFlag() public {
+        // Open as private
+        vm.startPrank(OWNER);
+        registrar.openMinting(false);
+        assertFalse(registrar.publicMinting(), "Should be private");
+
+        // Close
+        registrar.closeMinting();
+        assertFalse(registrar.publicMinting(), "publicMinting flag should persist (false)");
+
+        // Reopen as public
+        registrar.openMinting(true);
+        assertTrue(registrar.publicMinting(), "Now should be public");
+        vm.stopPrank();
+    }
+
+    function test_H5_001____edgeCase____SetMaxSupplyToZeroAfterMinting() public {
+        vm.prank(OWNER);
+        registrar.openMinting(true);
+
+        // Mint some agents
+        vm.prank(USER1);
+        registrar.mintBatch{value: MINT_PRICE * 5}(5);
+        assertEq(registrar.totalMinted(), 5, "Should have minted 5");
+
+        // Set maxSupply to 0 (unlimited)
+        vm.prank(OWNER);
+        registrar.setMaxSupply(0);
+
+        assertEq(registrar.maxSupply(), 0, "maxSupply should be 0 (unlimited)");
+        assertEq(registrar.remainingSupply(), type(uint256).max, "Should show unlimited remaining");
+
+        // Can now mint beyond original limit
+        vm.prank(USER1);
+        registrar.mintBatch{value: MINT_PRICE * 50}(50);
+        assertEq(registrar.totalMinted(), 55, "Should have minted 55 total");
+    }
+
+    function test_H8_001____edgeCase____SetLockBitIdempotent() public {
+        vm.startPrank(OWNER);
+
+        // Set LOCK_OPEN_CLOSE
+        registrar.setLockBit(registrar.LOCK_OPEN_CLOSE());
+        assertTrue(registrar.isLocked(registrar.LOCK_OPEN_CLOSE()), "Should be locked");
+        uint256 lockBitsAfterFirst = registrar.lockBits();
+
+        // Set same lock bit again — OR is idempotent
+        registrar.setLockBit(registrar.LOCK_OPEN_CLOSE());
+        assertTrue(registrar.isLocked(registrar.LOCK_OPEN_CLOSE()), "Should still be locked");
+        assertEq(registrar.lockBits(), lockBitsAfterFirst, "lockBits should be unchanged");
+
+        vm.stopPrank();
+    }
+
+    function test_H9_001____edgeCase____LockThenAttemptCloseMinting() public {
+        vm.startPrank(OWNER);
+
+        // Open minting first
+        registrar.openMinting(true);
+        assertTrue(registrar.open(), "Minting should be open");
+
+        // Lock OPEN_CLOSE
+        registrar.setLockBit(registrar.LOCK_OPEN_CLOSE());
+
+        // closeMinting should revert with FunctionLocked
+        vm.expectRevert(AgentRegistrar.FunctionLocked.selector);
+        registrar.closeMinting();
+
+        // openMinting should also revert
+        vm.expectRevert(AgentRegistrar.FunctionLocked.selector);
+        registrar.openMinting(false);
+
+        // Minting is permanently open
+        assertTrue(registrar.open(), "Minting should remain open");
+        vm.stopPrank();
+    }
+
+    function test_H9_002____edgeCase____LockClosedThenCannotReopen() public {
+        // Lock while minting is closed — permanently closed
+        vm.startPrank(OWNER);
+
+        assertFalse(registrar.open(), "Minting starts closed");
+        registrar.setLockBit(registrar.LOCK_OPEN_CLOSE());
+
+        vm.expectRevert(AgentRegistrar.FunctionLocked.selector);
+        registrar.openMinting(true);
+
+        assertFalse(registrar.open(), "Minting should remain closed permanently");
+        vm.stopPrank();
+    }
+}
+
+/// @title ReentrancyAttacker
+/// @dev Exploits the overpayment refund in _checkMintAndPay to re-enter mint()
+contract ReentrancyAttacker {
+    AgentRegistrar public target;
+    uint256 public mintCount;
+
+    constructor(AgentRegistrar _target) {
+        target = _target;
+    }
+
+    function attack() external {
+        // Send overpayment to trigger refund callback
+        target.mint{value: target.mintPrice() * 2}();
+    }
+
+    receive() external payable {
+        // Re-enter mint during refund of first mint
+        if (mintCount == 0) {
+            mintCount++;
+            target.mint{value: target.mintPrice()}();
+        }
     }
 }
 
