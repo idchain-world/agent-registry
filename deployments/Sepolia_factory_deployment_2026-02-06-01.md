@@ -100,5 +100,5 @@ Supersedes: [`Sepolia_factory_deployment_2025-12-27-01.md`](Sepolia_factory_depl
 
 ## Repository
 
-- **GitHub:** https://github.com/nxt3d/agent-registry
+- **GitHub:** https://github.com/idchain-world/agent-registry
 - **Base Commit:** `7df1d31` (uncommitted changes include security fixes + interface rename)

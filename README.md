@@ -127,21 +127,22 @@ A gas-efficient factory for deploying ERC-8122 registries and registrars using E
 - `deployRegistryDeterministic(admin, salt)` / `deployRegistryDeterministic(admin, salt, name)` - Deterministic registry deployment
 - `deployDeterministic(admin, mintPrice, maxSupply, registrySalt, registrarSalt, name)` - Deterministic combined deployment
 
-See [`deployments/Sepolia_factory_deployment_2025-12-27-01.md`](deployments/Sepolia_factory_deployment_2025-12-27-01.md) for full API documentation.
+See [`deployments/Sepolia_factory_deployment_2026-02-06-01.md`](deployments/Sepolia_factory_deployment_2026-02-06-01.md) for full API documentation.
 
 ## Deployed Contracts (Sepolia)
 
-**Deployment Date:** December 27, 2025  
-**Deployment Block:** `9926798` (important for indexers)  
-**Transaction Hash:** [`0x2196ecfb5dda8a9c8c20bcc62882cea48070b905bacc32cc1b9d4f5d8c689620`](https://sepolia.etherscan.io/tx/0x2196ecfb5dda8a9c8c20bcc62882cea48070b905bacc32cc1b9d4f5d8c689620)
+**Deployment Date:** February 6, 2026
+**Deployment Block:** `10202305` (important for indexers)
+**Compiler:** Solidity 0.8.30 (EVM: Prague)
+**Transaction Hash:** [`0xc6b4acff909be08c56f0a393051be1ba528acdcbccdf2b94d54c4768c0371e31`](https://sepolia.etherscan.io/tx/0xc6b4acff909be08c56f0a393051be1ba528acdcbccdf2b94d54c4768c0371e31)
 
 | Contract | Address | Status |
 |----------|---------|--------|
-| **Factory** | [`0x86a5139cBA9AB0f588aeFA3A7Ea3351E62C18563`](https://sepolia.etherscan.io/address/0x86a5139cBA9AB0f588aeFA3A7Ea3351E62C18563) | ✅ Verified |
-| **Registry Implementation** | [`0xa8cb0672E978Ff311412477c4D6732d80e074b20`](https://sepolia.etherscan.io/address/0xa8cb0672E978Ff311412477c4D6732d80e074b20) | ✅ Verified |
-| **Registrar Implementation** | [`0xb5E3Dcc8cc881c95Cd66D03fd0A4B3C07eA2fDCc`](https://sepolia.etherscan.io/address/0xb5E3Dcc8cc881c95Cd66D03fd0A4B3C07eA2fDCc) | ✅ Verified |
+| **Factory** | [`0xEdd20967A704c2B2065B7adF41c8cA0d6bec01b3`](https://sepolia.etherscan.io/address/0xEdd20967A704c2B2065B7adF41c8cA0d6bec01b3) | ✅ Verified |
+| **Registry Implementation** | [`0x7AB7A16B64BBbC2d680ACc5D2770BfD10b551274`](https://sepolia.etherscan.io/address/0x7AB7A16B64BBbC2d680ACc5D2770BfD10b551274) | ✅ Verified |
+| **Registrar Implementation** | [`0x6AE5852f98e54461bE8b057a7BdE71A83Fc7F678`](https://sepolia.etherscan.io/address/0x6AE5852f98e54461bE8b057a7BdE71A83Fc7F678) | ✅ Verified |
 
-📄 **Full deployment details and code examples:** [`deployments/Sepolia_factory_deployment_2025-12-27-01.md`](deployments/Sepolia_factory_deployment_2025-12-27-01.md)
+📄 **Full deployment details and code examples:** [`deployments/Sepolia_factory_deployment_2026-02-06-01.md`](deployments/Sepolia_factory_deployment_2026-02-06-01.md)
 
 ## Gas Savings
 
@@ -189,7 +190,7 @@ Using EIP-1167 minimal clones provides massive gas savings:
 ## Installation
 
 ```bash
-git clone https://github.com/nxt3d/agent-registry
+git clone https://github.com/idchain-world/agent-registry
 cd agent-registry
 forge install
 ```
@@ -206,7 +207,7 @@ forge test
 ### Using Existing Factory (Recommended)
 
 ```bash
-FACTORY_ADDRESS=0x86a5139cBA9AB0f588aeFA3A7Ea3351E62C18563 \
+FACTORY_ADDRESS=0xEdd20967A704c2B2065B7adF41c8cA0d6bec01b3 \
 MINT_PRICE=10000000000000000 \
 MAX_SUPPLY=1000 \
 source .env && forge script script/DeployAgentRegistry.s.sol:DeployFromExistingFactory \
