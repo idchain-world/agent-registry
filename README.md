@@ -262,17 +262,6 @@ registrar.openMinting(true); // Now anyone can mint
 registrar.setLockBit(registrar.LOCK_OPEN_CLOSE()); // Freezes as public forever
 ```
 
-## Environment Variables
-
-Create a `.env` file:
-
-```bash
-DEPLOYER_PRIVATE_KEY=0x...
-SEPOLIA_RPC_URL=https://...
-MAINNET_RPC_URL=https://...
-ETHERSCAN_API_KEY=...
-```
-
 ## Security Considerations
 
 - **Lock Bits are Irreversible**: Once set, lock bits cannot be unset
